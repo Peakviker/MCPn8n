@@ -64,10 +64,13 @@ class DeleteWorkflowParams(BaseModel):
 
 
 class RunWorkflowParams(BaseModel):
-    workflow_id: str = Field(..., description="Identifier of the workflow to execute.")
+    workflow_id: Optional[str] = Field(
+        default=None,
+        description="Identifier of the workflow to execute. When omitted, payload must contain workflow data.",
+    )
     payload: Dict[str, Any] = Field(
         default_factory=dict,
-        description="Execution parameters forwarded to n8n.",
+        description="Execution parameters forwarded to n8n (for example runData/startNodes).",
     )
 
 
@@ -104,37 +107,44 @@ class N8nClient:
 
     async def list_workflows(self, params: ListWorkflowsParams) -> Dict[str, Any]:
         logger.debug("Listing workflows with params=%s", params.dict())
-        response = await self._client.get("workflows", params=params.dict(exclude_none=True) or None)
+        response = await self._client.get(
+            "rest/workflows", params=params.dict(exclude_none=True) or None
+        )
         response.raise_for_status()
         return response.json()
 
     async def create_workflow(self, params: CreateWorkflowParams) -> Dict[str, Any]:
         logger.debug("Creating workflow with payload keys=%s", list(params.workflow.keys()))
-        response = await self._client.post("workflows", json=params.workflow)
+        response = await self._client.post("rest/workflows", json=params.workflow)
         response.raise_for_status()
         return response.json()
 
     async def update_workflow(self, params: UpdateWorkflowParams) -> Dict[str, Any]:
         logger.debug("Updating workflow %s", params.workflow_id)
-        response = await self._client.patch(f"workflows/{params.workflow_id}", json=params.workflow)
+        response = await self._client.patch(
+            f"rest/workflows/{params.workflow_id}", json=params.workflow
+        )
         response.raise_for_status()
         return response.json()
 
     async def delete_workflow(self, params: DeleteWorkflowParams) -> Dict[str, Any]:
         logger.debug("Deleting workflow %s", params.workflow_id)
-        response = await self._client.delete(f"workflows/{params.workflow_id}")
+        response = await self._client.delete(f"rest/workflows/{params.workflow_id}")
         response.raise_for_status()
         return response.json() if response.content else {"status": "deleted"}
 
     async def run_workflow(self, params: RunWorkflowParams) -> Dict[str, Any]:
         logger.debug("Running workflow %s", params.workflow_id)
-        response = await self._client.post(f"workflows/{params.workflow_id}/run", json=params.payload or None)
+        payload = dict(params.payload)
+        if params.workflow_id:
+            payload.setdefault("workflowId", params.workflow_id)
+        response = await self._client.post("rest/workflows/run", json=payload or None)
         response.raise_for_status()
         return response.json()
 
     async def get_execution_status(self, params: GetExecutionStatusParams) -> Dict[str, Any]:
         logger.debug("Fetching execution status for %s", params.execution_id)
-        response = await self._client.get(f"executions/{params.execution_id}")
+        response = await self._client.get(f"rest/executions/{params.execution_id}")
         response.raise_for_status()
         return response.json()
 
